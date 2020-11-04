@@ -1,5 +1,5 @@
-# Invincible
-Currently deployed at [richodemus.github.io/invincible](https://richodemus.github.io/invincible)
+# Game of Hexlife
+Currently deployed at [richodemus.github.io/game-of-hexlife/](https://richodemus.github.io/game-of-hexlife/)
 
 ## run locally
 desktop

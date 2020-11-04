@@ -1,39 +1,31 @@
+mod core;
+mod draw;
+
+
 use quicksilver::blinds::event::MouseButton::Left;
-use quicksilver::geom::{Circle, Rectangle};
 use quicksilver::graphics::VectorFont;
 use quicksilver::input::{Event, Key, ScrollDelta};
 use quicksilver::{
-    geom::Vector, graphics::Color, run, Graphics, Input, Result, Settings, Timer, Window,
+    geom::Vector, graphics::Color, graphics::Image, run, Graphics, Input, Result, Settings, Timer, Window,
 };
-
+use quicksilver::geom::Rectangle;
 use crate::core::Core;
-use crate::util::convert;
 
-mod core;
-mod util;
 
 // use 144 fps for non wasm release, use 60 fps for wasm or debug
 #[cfg(any(target_arch = "wasm32", debug_assertions))]
-pub(crate) const FPS: f32 = 60.0;
+pub const FPS: f32 = 60.0;
 #[cfg(all(not(target_arch = "wasm32"), not(debug_assertions)))]
-pub(crate) const FPS: f32 = 144.0;
-pub(crate) const UPS: f32 = 200.;
+pub const FPS: f32 = 144.0;
+pub const UPS: f32 = 200.;
 
-pub(crate) const WIDTH: f32 = 800.0;
-pub(crate) const HEIGHT: f32 = 600.0;
-#[cfg(debug_assertions)]
-pub(crate) const NUM_BODIES: i32 = 5;
-#[cfg(not(debug_assertions))]
-pub(crate) const NUM_BODIES: i32 = 100;
-pub(crate) const BODY_INITIAL_MASS_MAX: f64 = 50.;
-pub(crate) const INITIAL_SPEED: i32 = 50;
-pub(crate) const SUN_SIZE: f64 = 1000.;
-pub(crate) const GRAVITATIONAL_CONSTANT: f64 = 5.;
+pub const WIDTH: f32 = 800.0;
+pub const HEIGHT: f32 = 600.0;
 
 fn main() {
     run(
         Settings {
-            title: "Invincible",
+            title: "Game of Hexlife",
             size: Vector {
                 x: WIDTH,
                 y: HEIGHT,
@@ -45,11 +37,11 @@ fn main() {
 }
 
 async fn app(window: Window, mut gfx: Graphics, mut input: Input) -> Result<()> {
-    let mut core = Core::new();
-    core.init();
     let mut frames: u32 = 0;
     let mut last_fps: u32 = 0;
     let dt = 1. / (UPS as f64);
+
+    let mut core = Core::default();
 
     // Here we make 2 kinds of timers.
     // One to provide an consistant update time, so our example updates 30 times per second
@@ -57,11 +49,15 @@ async fn app(window: Window, mut gfx: Graphics, mut input: Input) -> Result<()> 
     let mut update_timer = Timer::time_per_second(UPS);
     let mut draw_timer = Timer::time_per_second(FPS);
     let mut fps_timer = Timer::time_per_second(1.);
+    let mut day_tick_timer = Timer::time_per_second(1.);
+
+    let image = Image::from_encoded_bytes(&gfx, include_bytes!("hexagon.png"))?;
 
     let ttf = VectorFont::from_slice(include_bytes!("BebasNeue-Regular.ttf"));
-    let mut font = ttf.to_renderer(&gfx, 30.0)?;
+    let mut font = ttf.to_renderer(&gfx, 20.0)?;
 
     let mut running = true;
+    let mut speed_up = false;
     let mut camera_y_axis;
     let mut camera_x_axis;
     let mut zoom_scale = 1.;
@@ -73,13 +69,17 @@ async fn app(window: Window, mut gfx: Graphics, mut input: Input) -> Result<()> 
                 if !pointer_input_event.is_down() && pointer_input_event.button() == Left {
                     let mouse_position = input.mouse().location();
 
-                    core.click(convert(mouse_position));
+                    // core.click(convert(mouse_position));
                 }
             } else if let Event::KeyboardInput(keyboard_event) = event {
                 if keyboard_event.is_down() && keyboard_event.key() == Key::Space {
-                    core.pause();
+                    // core.pause();
                 } else if keyboard_event.is_down() && keyboard_event.key() == Key::Escape {
                     running = false;
+                } else if keyboard_event.is_down() && keyboard_event.key() == Key::LShift {
+                    speed_up = true;
+                } else {
+                    speed_up = false;
                 }
             } else if let Event::ScrollInput(delta) = event {
                 if let ScrollDelta::Lines(lines) = delta {
@@ -102,7 +102,23 @@ async fn app(window: Window, mut gfx: Graphics, mut input: Input) -> Result<()> 
 
         // We use a while loop rather than an if so that we can try to catch up in the event of having a slow down.
         while update_timer.tick() {
-            core.tick(dt, camera_x_axis, camera_y_axis);
+            // core.tick();
+            // core.tick(dt, camera_x_axis, camera_y_axis);
+            if speed_up {
+                for _ in 1..10 {
+                    // core.tick(dt, camera_x_axis, camera_y_axis);
+                }
+            }
+        }
+
+        while day_tick_timer.tick() {
+            // core.tick_day();
+            core.tick();
+            if speed_up {
+                for _ in 1..10 {
+                    // core.tick_day();
+                }
+            }
         }
 
         // Unlike the update cycle drawing doesn't change our state
@@ -111,41 +127,9 @@ async fn app(window: Window, mut gfx: Graphics, mut input: Input) -> Result<()> 
         if draw_timer.exhaust().is_some() {
             gfx.clear(Color::BLACK);
 
-            // let (drawables, predicted_orbit) = core.draw();
-            // let num_bodies = drawables.len();
-            // for drawable in drawables {
-            //     if drawable.select_marker {
-            //         let rectangle = Rectangle::new(
-            //             Vector::new(
-            //                 (drawable.position.x - 10.) as f32,
-            //                 (drawable.position.y - 10.) as f32,
-            //             ),
-            //             Vector::new(20., 20.),
-            //         );
-            //         gfx.stroke_rect(&rectangle, Color::GREEN)
-            //     } else {
-            //         let circle = Circle::new(
-            //             Vector::new(
-            //                 drawable.position.x as f32 * zoom_scale,
-            //                 drawable.position.y as f32 * zoom_scale,
-            //             ),
-            //             drawable.radius as f32 * zoom_scale,
-            //         );
-            //         gfx.fill_circle(
-            //             &circle,
-            //             match drawable.sun {
-            //                 true => Color::YELLOW,
-            //                 false => Color::WHITE,
-            //             },
-            //         );
-            //     }
-            // }
+            // draw::draw(&mut gfx, zoom_scale, &mut font, &core);
 
-            // for orbit_point in predicted_orbit {
-            //     let circle =
-            //         Circle::new(Vector::new(orbit_point.x as f32, orbit_point.y as f32), 1.);
-            //     gfx.fill_circle(&circle, Color::YELLOW);
-            // }
+            draw::draw(&mut gfx, &core, &image);
 
             frames += 1;
             if fps_timer.tick() {

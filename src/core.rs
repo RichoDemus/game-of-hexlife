@@ -1,133 +1,107 @@
-use std::collections::HashMap;
-use std::f64::consts::PI;
-use std::ops::Not;
+use std::collections::HashSet;
+use std::cmp;
+use rand::{thread_rng, Rng};
 
-use itertools::Itertools;
-use legion::prelude::*;
-use nalgebra::{Isometry2, Point, Point2, Vector2};
-use ncollide2d::query::{self, PointQuery, Proximity};
-use ncollide2d::shape::Ball;
-use rand::Rng;
-
-use crate::{
-    BODY_INITIAL_MASS_MAX, GRAVITATIONAL_CONSTANT, HEIGHT, INITIAL_SPEED, NUM_BODIES, SUN_SIZE,
-    WIDTH,
-};
-
-// Define our entity data types
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Position {
-    point: Point2<f64>,
+#[derive(Hash, Eq, PartialEq)]
+pub struct Coordinate {
+    pub y: i64,
+    pub x: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct MyVector2 {
-    x: f64,
-    y: f64,
+impl  Coordinate{
+ fn new(x: i64, y:i64) -> Self {
+     Coordinate{y,x}
+ }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Velocity {
-    vector: Vector2<f64>,
+pub struct Core {
+    pub grid: HashSet<Coordinate>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Dimensions {
-    radius: f64,
-    mass: f64,
-}
+impl Default for Core {
+    fn default() -> Self {
+        let mut core = Core {
+            grid: HashSet::new(),
+        };
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-struct MetaInfo {
-    selected: bool,
-}
+        for y in 0..10 {
+            for x in 0..10 {
+                if thread_rng().gen_bool(0.5) {
+                    core.grid.insert(Coordinate::new(x,y));
+                }
+            }
+        }
 
-impl Dimensions {
-    fn from_mass(mass: f64) -> Dimensions {
-        let radius: f64 = mass / (4. / 3. * PI);
-        let radius = radius.cbrt();
-        Dimensions { mass, radius }
+        core
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct Data {
-    name: String,
-    sun: bool,
-}
 
-#[derive(Clone, Debug, PartialEq)]
-struct Id {
-    id: i32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Model(usize);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Static;
-
-pub(crate) struct Core {
-    world: World,
-    paused: bool,
-    predicted_orbit: Option<Vec<Point2<f64>>>,
-}
 
 impl Core {
-    pub(crate) fn new() -> Core {
-        let universe = Universe::new();
-        let world = universe.create_world();
-        Core {
-            world,
-            paused: false,
-            predicted_orbit: None,
+    pub fn tick(&mut self) {
+        let mut next_generation = HashSet::new();
+
+    let (y_min, y_max, x_min, x_max) = calc_boundary(&self.grid);
+
+
+    for y in (y_min-1)..=(y_max+1) {
+        for x in (x_min-1)..=(x_max+1) {
+            let cell = Coordinate::new(x, y);
+            let num_neighbours = count_neighbour(&cell, &self.grid);
+            let alive = self.grid.contains(&cell);
+
+            let new_state = if alive {
+                num_neighbours == 2
+            } else {
+                num_neighbours == 2
+            };
+
+            if new_state {
+                next_generation.insert(cell);
+            }
         }
     }
 
-    pub(crate) fn init(&mut self) {
-    }
+        self.grid = next_generation;
 
-    pub(crate) fn tick(&mut self, dt: f64, camera_x_axis: f64, camera_y_axis: f64) {
-    }
 
-    pub(crate) fn draw(&self) /* -> (Vec<Drawable>, Vec<Point2<f64>>) */ {
-    }
-
-    pub(crate) fn click(&mut self, click_position: Vector2<f64>) {
-    }
-
-    pub(crate) fn pause(&mut self) {
-        self.paused = self.paused.not();
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use nalgebra::{Isometry2, Point2, Vector2};
-    use ncollide2d::query::PointQuery;
+fn calc_boundary(coordinates: &HashSet<Coordinate>) -> (i64, i64, i64, i64) {
+    assert_eq!(coordinates.is_empty(), false, "should be some cells");
+    coordinates
+        .iter()
+        .fold(None, |left_option, right| match left_option {
+            None => Some((right.y, right.y, right.x, right.x)),
+            Some((y_min, y_max, x_min, x_max)) => Some((
+                cmp::min(y_min, right.y),
+                cmp::max(y_max, right.y),
+                cmp::min(x_min, right.x),
+                cmp::max(x_max, right.x),
+            )),
+        })
+        .unwrap()
+}
 
-    use super::*;
+fn count_neighbour(cell: &Coordinate, grid: &HashSet<Coordinate>)  -> u8 {
+    let neighbour_offsets = vec![
+        // (0,0),
+        (1,0),
+        (0,1),
+        (-1,0),
+        (0,-1),
+        (1,-1),
+        (-1,1),
+    ];
 
-    #[test]
-    fn it_works() {
-        let vector: Vector2<f64> = Vector2::new(11., 11.);
-        let vector1 = Vector2::new(10., 10.);
-
-        let result: Vector2<f64> = vector1 - vector;
-
-        let result = result.magnitude();
-
-        print!("{:?}", result)
+    let mut neighbours = 0;
+    for (x,y) in neighbour_offsets {
+        let coordinate = Coordinate::new(cell.x + x, cell.y + y);
+        if grid.contains(&coordinate) {
+            neighbours += 1;
+        }
     }
-
-    #[test]
-    fn test_click_inside() {
-        let cuboid = Ball::new(1.);
-        let click_pos = Point2::from(Vector2::new(11., 20.));
-
-        let cuboid_pos = Isometry2::translation(10., 20.);
-
-        // Solid projection.
-        assert_eq!(cuboid.distance_to_point(&cuboid_pos, &click_pos, true), 0.0);
-    }
+    neighbours
 }
